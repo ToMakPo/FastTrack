@@ -1,0 +1,1 @@
+A web application meant to help students study.
