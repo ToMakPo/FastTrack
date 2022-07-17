@@ -1,8 +1,6 @@
 const mongoose = require("mongoose")
 const bcrypt = require('bcrypt')
-const {getWeekOf} = require('../../global')
-
-const Schema = mongoose.Schema
+const {CHARACTERS_IN_NAMES} = require('../../global')
 
 const MIN_USERNAME_LENGTH = 5
 const MAX_USERNAME_LENGTH = 30
@@ -14,8 +12,6 @@ const PASSWORD_REQUIRE_NUMBER = true
 const PASSWORD_REQUIRE_SPECIAL = true
 const PASSWORD_SPECIAL_CHARACTERS = '#$@!%&*?'
 const SALT_WORK_FACTOR = 10
-const ROLES = ['parent', 'child']
-const CATEGORIES = ['mathematics', 'spelling']
 
 const UserSchema = new mongoose.Schema({
     firstName: {
@@ -395,6 +391,56 @@ UserSchema.statics.logout = async function(loginInfo) {
     return user.logout(loginInfo)
 }
 
+///////////////
+/// METHODS ///
+///////////////
+
+/// ACTIONS ///
+/** Display the user's full name.
+ * @returns {String} The full name of the user.
+ */
+UserSchema.methods.getDisplayName = function() {
+    return `${this.firstName} ${this.lastName}`
+}
+
+/** Log the user into the system.
+ * @param {String} password The password for the profile.
+ * @returns {Object} An object with the following values:
+ *  - passed {Boolean} Indicates if the user was successfully logged in.
+ *  - field {String} The field that this value is connected to.
+ *  - message {String} The message being sent back.
+ *  - info {Object} The user that was logged in.
+ *  - code {String} A unique identifier that specifically references this message.
+ */
+UserSchema.methods.login = async function(password) {
+    if (!password) return {passed: false, field: 'login', message: 'No password was given.', info: null, code: 'dbusli60'}
+
+    if (!await checkPassword(password, this.hashed)) {
+        this.loggedIn = false
+        return {passed: false, field: 'login', message: 'The password does not match our records.', info: null, code: 'dbusli61'}
+    }
+
+    this.loggedIn = true
+    this.save()
+
+    return {passed: true, field: 'login', message: 'Login successful', info: this, code: 'dbusli10'}
+}
+
+/** Log the user out of the system.
+ * @returns {Object} An object with the following values:
+ *  - passed {Boolean} Indicates if the user was successfully logged out.
+ *  - field {String} The field that this value is connected to.
+ *  - message {String} The message being sent back.
+ *  - info {Object} The user that was logged out.
+ *  - code {String} A unique identifier that specifically references this message.
+ */
+UserSchema.methods.logout = async function() {
+    this.loggedIn = false
+    this.save()
+
+    return {passed: true, field: 'logout', message: 'Logout successful', data: this, code: 'dbuslo10'}
+}
+
 /** Change the name of the user.
  * @param {String} firstName (optional)
  * @param {String} lastName (optional)
@@ -486,54 +532,6 @@ UserSchema.methods.changePassword = async function(password, confirm) {
     return {passed: true, field: 'password', message: 'The password was updated.'}
 }
 
-///////////////
-/// METHODS ///
-///////////////
-/** Display the user's full name.
- * @returns {String} The full name of the user.
- */
-UserSchema.methods.displayName = function() {
-    return `${this.firstName} ${this.lastName}`
-}
-
-/** Log the user into the system.
- * @param {String} password The password for the profile.
- * @returns {Object} An object with the following values:
- *  - passed {Boolean} Indicates if the user was successfully logged in.
- *  - field {String} The field that this value is connected to.
- *  - message {String} The message being sent back.
- *  - info {Object} The user that was logged in.
- *  - code {String} A unique identifier that specifically references this message.
- */
-UserSchema.methods.login = async function(password) {
-    if (!password) return {passed: false, field: 'login', message: 'No password was given.', info: null, code: 'dbusli60'}
-
-    if (!await checkPassword(password, this.hashed)) {
-        this.loggedIn = false
-        return {passed: false, field: 'login', message: 'The password does not match our records.', info: null, code: 'dbusli61'}
-    }
-
-    this.loggedIn = true
-    this.save()
-
-    return {passed: true, field: 'login', message: 'Login successful', info: this, code: 'dbusli10'}
-}
-
-/** Log the user out of the system.
- * @returns {Object} An object with the following values:
- *  - passed {Boolean} Indicates if the user was successfully logged out.
- *  - field {String} The field that this value is connected to.
- *  - message {String} The message being sent back.
- *  - info {Object} The user that was logged out.
- *  - code {String} A unique identifier that specifically references this message.
- */
-UserSchema.methods.logout = async function() {
-    this.loggedIn = false
-    this.save()
-
-    return {passed: true, field: 'logout', message: 'Logout successful', data: this, code: 'dbuslo10'}
-}
-
 /////////////////////
 /// API FUNCTIONS ///
 /////////////////////
@@ -589,60 +587,6 @@ UserSchema.statics.api = async function(filters={}) {
     
     return await User.find(match).select(selects)
 }
-
-//////////////////////////////////////////////////
-
-// UserSchema.statics.createNew = function(name, username, email, password, role, dateOfBirth) {
-//     console.debug('A01 > User.createNew >>> CREATING NEW USER')
-//     const user = new User({name, username, email, password, role, dateOfBirth})
-//     console.debug('A02 > User.createNew >>> USER CREATED:', {user})
-//     return user
-// }
-
-// function hashPassword(user) {
-//     console.debug('H01 > hashPassword >>> HASHING PASSWORD FOR USER:', {user})
-//     // only hash the password if it has been modified (or is new)
-    
-//     console.debug('H02 > hashPassword >>> USER PASSWORD WAS MODIFIED:', user.isModified('password'))
-//     if (!user.isModified('password')) return next()
-
-//     // generate a salt
-//     console.debug('H03 > hashPassword >>> GENERATING SALT')
-//     bcrypt.genSalt(SALT_WORK_FACTOR, function (err, salt) {
-//         console.debug('H04 > hashPassword >>> SALT GENERATING:', {err, salt})
-//         if (err) return next(err)
-
-//         // hash the password using our new salt
-//         console.debug('H05 > hashPassword >>> HASHING PASSWORD')
-//         bcrypt.hash(user.password, salt, function (err, hash) {
-//             console.debug('H06 > hashPassword >>> HASHING:', {err, hash})
-//             if (err) return next(err)
-
-//             // override the cleartext password with the hashed one
-//             user.password = hash
-//             console.debug('H07 > hashPassword >>> PASSWORD UPDATED:', {user})
-//             next()
-//         })
-//         console.debug('H08 > hashPassword >>> PASSWORD HASHED')
-//     })
-//     console.debug('H09 > hashPassword >>> SALT GENERATED')
-// }
-
-// UserSchema.pre('save', function(next) {
-//     console.debug('P01 > User.pre >>> PRE SAVE:', {next})
-//     var user = this
-
-//     console.debug('P02 > User.pre >>> HASH PASSWORD:', {user})
-//     hashPassword(user)
-//     console.debug('P03 > User.pre >>> PASSWORD HASHed:', {user})
-// })
-
-// UserSchema.methods.comparePassword = function (candidatePassword, cb) {
-//     bcrypt.compare(candidatePassword, this.password, function (err, isMatch) {
-//         if (err) return cb(err)
-//         cb(null, isMatch)
-//     })
-// }
 
 const User = mongoose.model("user", UserSchema)
 module.exports = User
